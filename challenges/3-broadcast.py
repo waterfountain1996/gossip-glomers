@@ -7,11 +7,14 @@ from common import Body, Node, Message
 
 log = logging.getLogger(__name__)
 
-MESSAGES: list[int] = []
+node = Node()
+
+# List of all messages seen by this node
+node.state["messages"] = []
 
 
 class BroadcastMessageBody(Body):
-    message: typing.NotRequired[int]
+    message: int
 
 
 class ReadMessageBody(Body):
@@ -22,63 +25,21 @@ class TopologyMessageBody(Body):
     pass
 
 
-def handle_broadcast(
-    node: Node, message: Message[BroadcastMessageBody],
-) -> Message[BroadcastMessageBody]:
-    global MESSAGES
-
-    assert "msg_id" in message["body"]
-    assert "message" in message["body"]
-
-    MESSAGES.append(message["body"]["message"])
-
-    return Message(
-        src=node.node_id,
-        dest=message["src"],
-        body=BroadcastMessageBody(
-            type="broadcast_ok",
-            msg_id=message["body"]["msg_id"] + 1,
-            in_reply_to=message["body"]["msg_id"],
-        )
-    )
+@node.handles("broadcast")
+def handle_broadcast(node: Node, message: Message[BroadcastMessageBody]):
+    node.state["messages"].append(message["body"]["message"])
+    node.reply_to(message, Body(type="broadcast_ok"))
 
 
-def handle_read(node: Node, message: Message[ReadMessageBody]) -> Message[ReadMessageBody]:
-    assert "msg_id" in message["body"]
-
-    return Message(
-        src=node.node_id,
-        dest=message["src"],
-        body=ReadMessageBody(
-            type="read_ok",
-            msg_id=message["body"]["msg_id"] + 1,
-            in_reply_to=message["body"]["msg_id"],
-            messages=MESSAGES,
-        )
-    )
+@node.handles("read")
+def handle_read(node: Node, message: Message[ReadMessageBody]):
+    node.reply_to(message, ReadMessageBody(type="read_ok", messages=node.state["messages"]))
     
 
-def handle_topology(
-    node: Node, message: Message[TopologyMessageBody]
-) -> Message[TopologyMessageBody]:
-    assert "msg_id" in message["body"]
-    return Message(
-        src=node.node_id,
-        dest=message["src"],
-        body=TopologyMessageBody(
-            type="topology_ok",
-            msg_id=message["body"]["msg_id"] + 1,
-            in_reply_to=message["body"]["msg_id"],
-        )
-    )
+@node.handles("topology")
+def handle_topology(node: Node, message: Message[TopologyMessageBody]):
+    node.reply_to(message, TopologyMessageBody(type="topology_ok"))
 
 
-def main():
-    node = Node()
-    node.add_handler("broadcast", handle_broadcast)
-    node.add_handler("read", handle_read)
-    node.add_handler("topology", handle_topology)
+if __name__ == "__main__":
     node.run()
-
-
-main()
