@@ -1,8 +1,10 @@
 import json
 import logging
 import os
+import select
 import sys
 import typing
+from collections import defaultdict
 
 try:
     DEBUG = bool(int(os.getenv("DEBUG", 0)))
@@ -51,11 +53,21 @@ Callback = typing.Callable[["Node", Message[_BodyT]], typing.Any]
 
 class Node:
 
-    __slots__ = ("_handlers", "_callbacks", "_state", "_msg_id", "_id", "_nodes")
+    __slots__ = (
+        "_handlers",
+        "_callbacks",
+        "_state",
+        "_before_message",
+        "_msg_id",
+        "_id",
+        "_nodes",
+        "_topology",
+    )
 
     def __init__(self) -> None:
         self._handlers: dict[str, Handler[typing.Any]] = {}
         self._callbacks: dict[int, Callback[typing.Any]] = {}
+        self._before_message: list[typing.Callable[["Node"], typing.Any]] = []
         self._state: dict[str, typing.Any] = {}
         self._msg_id = 0
 
@@ -65,6 +77,12 @@ class Node:
     def __next__(self) -> Message[typing.Any]:
         while True:
             try:
+                for f in self._before_message:
+                    f(self)
+
+                if select.select([sys.stdin], [], [], 0) != ([sys.stdin], [], []):
+                    continue
+
                 line = sys.stdin.readline()
                 return json.loads(line)
             except EOFError:
@@ -75,6 +93,19 @@ class Node:
     def _initialize(self, node_id: str, node_ids: list[str]) -> None:
         self._id = node_id
         self._nodes = node_ids
+        self._topology = self._make_topology(self._nodes)
+
+    @staticmethod
+    def _make_topology(nodes: list[str]) -> dict[str, list[str]]:
+        topology: dict[str, list[str]] = defaultdict(list)
+        for i, node in enumerate(nodes):
+            if i > 0:
+                topology[node].append(nodes[i - 1])
+
+            if i + 1 < len(nodes):
+                topology[node].append(nodes[i + 1])
+
+        return topology
 
     def _write(self, message: Message[typing.Any]) -> None:
         json.dump(message, sys.stdout)
@@ -107,6 +138,14 @@ class Node:
         return self._nodes
 
     @property
+    def topology(self) -> dict[str, list[str]]:
+        return self._topology
+
+    @property
+    def neighbours(self) -> list[str]:
+        return self.topology[self.id]
+
+    @property
     def state(self) -> dict[str, typing.Any]:
         return self._state
 
@@ -135,6 +174,13 @@ class Node:
             log.info("Aborted on interrupt")
         except Exception as e:
             log.critical(e, exc_info=True)
+
+    def before_message(
+        self, f: typing.Callable[["Node"], typing.Any],
+    ) -> typing.Callable[["Node"], typing.Any]:
+        """Call this function before any message handler."""
+        self._before_message.append(f)
+        return f
 
     def handles(self, message_type: str) -> typing.Callable[[Handler[_BodyT]], Handler[_BodyT]]:
         """Mark function as an RPC handler."""
