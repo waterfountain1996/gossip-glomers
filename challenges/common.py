@@ -141,6 +141,10 @@ class Node:
     def topology(self) -> dict[str, list[str]]:
         return self._topology
 
+    @topology.setter
+    def topology(self, value: dict[str, list[str]]) -> None:
+        self._topology = value
+
     @property
     def neighbours(self) -> list[str]:
         return self.topology[self.id]

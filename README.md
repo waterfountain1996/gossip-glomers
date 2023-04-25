@@ -25,15 +25,22 @@ maelstrom test -w unique-ids --bin ./challenges/2-unique-ids.py \
 ### 3a - Broadcast
 
 ```bash
-maelstrom test -w broadcast --bin ./challenges/3a-broadcast.py \
+maelstrom test -w broadcast --bin ./challenges/3-broadcast.py \
   --node-count 1 --time-limit 20 --rate 10
 ```
 
 ### 3b - Multi-node broadcast
 
 ```bash
-maelstrom test -w broadcast --bin ./challenges/3b-broadcast.py \
+maelstrom test -w broadcast --bin ./challenges/3-broadcast.py \
   --node-count 5 --time-limit 20 --rate 10
+```
+
+### 3c - Fault tolerant broadcast
+
+```bash
+maelstrom test -w broadcast --bin ./challenges/3-broadcast.py \
+  --node-count 5 --time-limit 20 --rate 10 --nemesis partition
 ```
 
 
